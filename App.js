@@ -6,8 +6,15 @@ import {
 } from "@expo-google-fonts/nunito";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useState } from "react";
-import { Text, TouchableHighlight, TouchableOpacity, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Platform,
+  ScrollView,
+  Text,
+  TouchableHighlight,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Styled from "styled-components/native";
 
@@ -16,6 +23,7 @@ const ScreenWrapper = Styled(SafeAreaView)`
   padding-left: 20px;
   padding-right: 15px;
   background-color: #404040;
+  padding-bottom: ${Platform.OS === "ios" ? 65 : 50}px;
 `;
 
 const Row = Styled.View`
@@ -23,7 +31,6 @@ const Row = Styled.View`
   height: 65px;
   justify-content: space-between;
   align-items: center;
-  /* background-color: yellow; */
 `;
 
 const Col = Styled.TouchableOpacity.attrs({ activeOpacity: 0.85 })`
@@ -35,10 +42,14 @@ const Col = Styled.TouchableOpacity.attrs({ activeOpacity: 0.85 })`
   border-radius: 10px;
   border-width: 5px;
 
-  border-color: #232323;
+  border-color: ${({ correct, misplaced }) =>
+    correct ? "#003105" : misplaced ? "#607000" : "#232323"};
   border-bottom-width: ${({ selected }) => (selected ? 10 : 5)}px;
-  background-color: rgba(35, 35, 35, ${({ disabled, filled }) =>
-    disabled ? (filled ? 0.7 : 1) : 0});
+  background-color: rgba(${({ correct, misplaced }) =>
+    correct ? "0, 49, 5" : misplaced ? "96, 112, 0" : "35, 35, 35"}, ${({
+  disabled,
+  filled,
+}) => (disabled ? (filled ? 0.7 : 1) : 0)});
 `;
 
 const Options = Styled.View`
@@ -48,6 +59,28 @@ const Options = Styled.View`
   flex-direction: row;
   justify-content: space-between;
   align-items: center;
+`;
+
+const Keyboard = Styled.View`
+  margin-top: auto;
+`;
+
+const KeysRow = Styled.View`
+  flex-direction: row;
+  margin: 5px 0;
+  margin-left: -3px;
+`;
+
+const Key = Styled.TouchableOpacity`
+  background-color: ${({ correct, misplaced }) =>
+    correct ? "#003105" : misplaced ? "#607000" : "#232323"};
+  border-radius: 5px;
+  width: 25px;
+  height: 45px;
+  margin: 0 3px;
+  align-items: center;
+  justify-content: center;
+  opacity: ${({ disabled, wrong }) => (disabled ? 0.6 : wrong ? 0.7 : 1)};
 `;
 
 export default function App() {
@@ -76,6 +109,12 @@ export default function App() {
     { label: "Hard", rows: 4 },
   ];
 
+  const keys = [
+    ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
+    ["A", "S", "D", "F", "G", "H", "J", "K", "L", "backspace"],
+    ["Z", "X", "C", "V", "B", "N", "M", "enter"],
+  ];
+
   const [curDifficulty, setCurDifficulty] = useState(1);
 
   const cols = (v = "") => Array(5).fill(v);
@@ -86,28 +125,132 @@ export default function App() {
   const [rows, setRows] = useState(genRows());
   const [curRow, setCurRow] = useState(0);
   const [curCol, setCurCol] = useState(0);
-  const [countChar, setCountChar] = useState(0);
+  const [usedKeys, setUsedKeys] = useState([]);
+
+  const [corrects, setCorrects] = useState([]);
+  const [misplaceds, setMisplaceds] = useState([]);
+
+  const [gameEnded, setGameEnded] = useState(false);
+
+  const [correctKeys, setCorrectKeys] = useState([]);
+  const [misplacedKeys, setMisplacedKeys] = useState([]);
+  const [wrongKeys, setWrongKeys] = useState([]);
+
+  const [charCount, setCharCount] = useState(0);
+
+  const word = useRef("termo".toUpperCase());
 
   const updateRows = key => {
-    if (curCol < 0) return;
-    setRows([
-      ...rows.map((k, j) =>
-        k.map((v, i) => (j === curRow && i === curCol ? key : v))
-      ),
-    ]);
-    setCountChar(countChar + 1);
+    switch (key) {
+      case "backspace":
+        setRows([
+          ...rows.map((k, j) =>
+            k.map((v, i) => (j === curRow && i === curCol ? "" : v))
+          ),
+        ]);
+
+        if (curCol > 0) {
+          setCurCol(curCol - 1);
+        } else if (curCol === -1) {
+          setCurCol(4);
+        }
+        break;
+      case "enter":
+        nextRow();
+        break;
+      default:
+        if (curCol < 0) return;
+        setRows([
+          ...rows.map((k, j) =>
+            k.map((v, i) => (j === curRow && i === curCol ? key : v))
+          ),
+        ]);
+        usedKeys.indexOf(key) === -1 && setUsedKeys([...usedKeys, key]);
+        setCharCount(charCount + 1);
+        break;
+    }
   };
 
   const nextRow = _ => {
-    setCurRow(curRow < difficulties[curDifficulty].rows - 1 ? curRow + 1 : 0);
-    setCurCol(0);
+    let endGame = false;
+    const row = rows[curRow];
+
+    if (row) {
+      endGame = checkWord(row);
+    }
+
+    if (curRow + 1 === difficulties[curDifficulty].rows) endGame = true;
+
+    endGame
+      ? setGameEnded(true)
+      : setCurRow(Math.min(curRow + 1, difficulties[curDifficulty].rows - 1));
   };
+
+  const checkWord = row => {
+    const term = word.current;
+    let corKeys = [],
+      misKeys = [],
+      wrgKeys = [];
+
+    setCorrects([
+      ...corrects,
+      row.map((v, i) => {
+        const correct = v === term.charAt(i);
+
+        correct && corKeys.indexOf(v) === -1 && corKeys.push(v);
+
+        return correct;
+      }),
+    ]);
+
+    setMisplaceds([
+      ...misplaceds,
+      row.map((v, i) => {
+        const misplaced =
+          v !== term.charAt(i) && row.indexOf(v) === i && term.includes(v);
+
+        misplaced &&
+          misKeys.indexOf(v) === -1 &&
+          corKeys.indexOf(v) === -1 &&
+          misKeys.push(v);
+
+        return misplaced;
+      }),
+    ]);
+
+    usedKeys.forEach(
+      k =>
+        corKeys.indexOf(k) === -1 &&
+        misKeys.indexOf(k) === -1 &&
+        wrgKeys.push(k)
+    );
+
+    setCorrectKeys([...correctKeys, ...corKeys]);
+    setMisplacedKeys([...misplacedKeys, ...misKeys]);
+
+    setWrongKeys([...wrongKeys, ...wrgKeys]);
+
+    return row.join("") === term;
+  };
+
+  useEffect(
+    _ => {
+      setCurCol(0);
+    },
+    [curRow]
+  );
 
   const reset = _ => {
     setRows(genRows());
     setCurRow(0);
     setCurCol(0);
-    setCountChar(0);
+    setUsedKeys([]);
+    setCorrects([]);
+    setMisplaceds([]);
+    setCorrectKeys([]);
+    setMisplacedKeys([]);
+    setWrongKeys([]);
+    setGameEnded(false);
   };
 
   useEffect(_ => setRows(genRows()), [curDifficulty]);
@@ -119,10 +262,8 @@ export default function App() {
 
       setCurCol(nextIndex);
     },
-    [countChar]
+    [charCount]
   );
-
-  console.log(rows);
 
   return (
     <ScreenWrapper onLayout={onLayoutRootView}>
@@ -137,12 +278,12 @@ export default function App() {
           style={{
             flexDirection: "row",
             marginLeft: -5,
-            opacity: countChar !== 0 ? 0.7 : 1,
+            opacity: usedKeys.length !== 0 ? 0.7 : 1,
           }}
         >
           {difficulties.map((d, i) => (
             <TouchableOpacity
-              disabled={countChar !== 0}
+              disabled={usedKeys.length !== 0}
               key={`difficulty-${d.label}`}
               onPress={() => setCurDifficulty(i)}
               style={{ padding: 5 }}
@@ -181,18 +322,20 @@ export default function App() {
               textTransform: "lowercase",
             }}
           >
-            Give up
+            {gameEnded ? "Restart" : "Give up"}
           </Text>
         </TouchableHighlight>
       </Options>
-      <View>
+      <ScrollView style={{ marginBottom: 50 }}>
         {rows.map((k, j) => (
           <Row key={`row-${j}`}>
             {k.map((v, i) => (
               <Col
-                disabled={j !== curRow}
+                correct={corrects[j] && corrects[j][i]}
+                misplaced={misplaceds[j] && misplaceds[j][i]}
+                disabled={j !== curRow || gameEnded}
                 selected={j === curRow && i === curCol}
-                filled={j < curRow}
+                filled={j < curRow || (j === curRow && gameEnded)}
                 key={`col-${j}-${i}`}
                 onPress={() => setCurCol(i)}
               >
@@ -212,15 +355,45 @@ export default function App() {
             ))}
           </Row>
         ))}
-      </View>
-      <TouchableOpacity
-        onPress={() => updateRows(Math.round(Math.random() * 10))}
-      >
-        <Text style={{ fontSize: 50 }}>random num</Text>
-      </TouchableOpacity>
-      <TouchableOpacity onPress={nextRow}>
-        <Text style={{ fontSize: 50 }}>next row</Text>
-      </TouchableOpacity>
+      </ScrollView>
+      <Keyboard>
+        {keys.map((k, j) => (
+          <KeysRow key={`keys-row-${j}`} style={{ marginLeft: j * 6 }}>
+            {k.map(v => (
+              <Key
+                correct={correctKeys.indexOf(v) !== -1}
+                misplaced={misplacedKeys.indexOf(v) !== -1}
+                wrong={wrongKeys.indexOf(v) !== -1}
+                key={`key-${v}`}
+                style={
+                  v.length > 1 && {
+                    marginLeft: "auto",
+                    width: "auto",
+                    paddingHorizontal: v === "backspace" ? 5 : 12,
+                  }
+                }
+                disabled={
+                  gameEnded ||
+                  (v === "enter" && rows[curRow].some(el => el === ""))
+                }
+                onPress={() => updateRows(v)}
+              >
+                <Text
+                  style={{
+                    color: "white",
+                    fontFamily: fontsLoaded ? "Nunito_700Bold" : null,
+                    fontSize: v === "backspace" ? 14 : 16,
+                    textAlignVertical: "center",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {v === "backspace" ? "⌫" : v}
+                </Text>
+              </Key>
+            ))}
+          </KeysRow>
+        ))}
+      </Keyboard>
     </ScreenWrapper>
   );
 }
