@@ -1,13 +1,8 @@
-import {
-  Nunito_600SemiBold,
-  Nunito_700Bold,
-  Nunito_900Black,
-  useFonts,
-} from "@expo-google-fonts/nunito";
+import { useFonts } from "@expo-google-fonts/nunito";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useState } from "react";
-import { Text, TouchableHighlight, TouchableOpacity, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Styled from "styled-components/native";
 
@@ -17,7 +12,6 @@ const ScreenWrapper = Styled(SafeAreaView)`
   padding-right: 15px;
   background-color: #404040;
 `;
-
 const Row = Styled.View`
   flex-direction: row;
   height: 65px;
@@ -25,7 +19,6 @@ const Row = Styled.View`
   align-items: center;
   /* background-color: yellow; */
 `;
-
 const Col = Styled.TouchableOpacity.attrs({ activeOpacity: 0.85 })`
   width: 19%;
   height: auto;
@@ -40,14 +33,9 @@ const Col = Styled.TouchableOpacity.attrs({ activeOpacity: 0.85 })`
   background-color: rgba(35, 35, 35, ${({ disabled, filled }) =>
     disabled ? (filled ? 0.7 : 1) : 0});
 `;
-
 const Options = Styled.View`
   margin-top: 25px;
   margin-bottom: 50px;
-  width: 100%;
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
 `;
 
 export default function App() {
@@ -78,51 +66,23 @@ export default function App() {
 
   const [curDifficulty, setCurDifficulty] = useState(1);
 
-  const cols = (v = "") => Array(5).fill(v);
+  const cols = (v = "") => Array(5).fill(Math.round(Math.random() * 10));
   const getRows = (s = 5, c = cols) => Array(s).fill(c());
 
-  const genRows = _ => getRows(difficulties[curDifficulty].rows);
-
-  const [rows, setRows] = useState(genRows());
-  const [curRow, setCurRow] = useState(0);
+  const [rows, setRows] = useState(getRows(difficulties[curDifficulty].rows));
+  const [curRow, setCurRow] = useState(1);
   const [curCol, setCurCol] = useState(0);
-  const [countChar, setCountChar] = useState(0);
 
   const updateRows = key => {
-    if (curCol < 0) return;
     setRows([
       ...rows.map((k, j) =>
         k.map((v, i) => (j === curRow && i === curCol ? key : v))
       ),
     ]);
-    setCountChar(countChar + 1);
   };
 
-  const nextRow = _ => {
-    setCurRow(curRow < difficulties[curDifficulty].rows - 1 ? curRow + 1 : 0);
-    setCurCol(0);
-  };
-
-  const reset = _ => {
-    setRows(genRows());
-    setCurRow(0);
-    setCurCol(0);
-    setCountChar(0);
-  };
-
-  useEffect(_ => setRows(genRows()), [curDifficulty]);
-  useEffect(
-    _ => {
-      let nextIndex = rows[curRow].indexOf("", curCol);
-
-      if (nextIndex === -1) nextIndex = rows[curRow].indexOf("");
-
-      setCurCol(nextIndex);
-    },
-    [countChar]
-  );
-
-  console.log(rows);
+  useEffect(_ => updateRows("t"), []);
+  useEffect(_ => setRows(difficulties[curDifficulty].rows), [curDifficulty]);
 
   return (
     <ScreenWrapper onLayout={onLayoutRootView}>
@@ -133,16 +93,10 @@ export default function App() {
         transluscent
       />
       <Options>
-        <View
-          style={{
-            flexDirection: "row",
-            marginLeft: -5,
-            opacity: countChar !== 0 ? 0.7 : 1,
-          }}
-        >
+        <View style={{ flexDirection: "row", marginLeft: -5 }}>
           {difficulties.map((d, i) => (
             <TouchableOpacity
-              disabled={countChar !== 0}
+              disable={curRow !== 0}
               key={`difficulty-${d.label}`}
               onPress={() => setCurDifficulty(i)}
               style={{ padding: 5 }}
@@ -162,28 +116,6 @@ export default function App() {
             </TouchableOpacity>
           ))}
         </View>
-        <TouchableHighlight
-          onPress={reset}
-          underlayColor="#232323"
-          style={{
-            borderColor: "whitesmoke",
-            borderWidth: 2,
-            borderRadius: 12,
-            paddingVertical: 8,
-            paddingHorizontal: 30,
-          }}
-        >
-          <Text
-            style={{
-              color: "whitesmoke",
-              fontSize: 16,
-              fontFamily: fontsLoaded ? "Nunito_600SemiBold" : null,
-              textTransform: "lowercase",
-            }}
-          >
-            Give up
-          </Text>
-        </TouchableHighlight>
       </Options>
       <View>
         {rows.map((k, j) => (
@@ -213,14 +145,6 @@ export default function App() {
           </Row>
         ))}
       </View>
-      <TouchableOpacity
-        onPress={() => updateRows(Math.round(Math.random() * 10))}
-      >
-        <Text style={{ fontSize: 50 }}>random num</Text>
-      </TouchableOpacity>
-      <TouchableOpacity onPress={nextRow}>
-        <Text style={{ fontSize: 50 }}>next row</Text>
-      </TouchableOpacity>
     </ScreenWrapper>
   );
 }
